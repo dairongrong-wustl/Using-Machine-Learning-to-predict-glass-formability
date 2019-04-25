@@ -1,0 +1,82 @@
+---
+title: "Lasso regression for identify important attributes governing glass formation"
+author: "Rongrong Dai"
+date: "April 25, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load the package and data
+
+```{r message = FALSE, warning=FALSE}
+library(dplyr)
+library(glmnet)
+
+data = read.csv("attributes_gfa_set AM to 1.csv", header = TRUE, sep = ",")
+data$Class = as.factor(data$Class)
+x = model.matrix(Class~.,data)[,-1]
+
+y = data$Class
+train = sample(1:nrow(x), nrow(x)*0.9) ##default replace = FALSE
+
+test = (-train)
+
+y.test = y[test]
+
+```
+
+## Fit a lasso model
+
+```{r}
+grid = 10^seq(10,-2,length=100)  ##a descending sequence 
+
+lasso.mod = glmnet(x[train,],y[train],family="binomial", alpha = 1,lambda = grid)
+
+```
+
+## Use cross validation to choose the best lambda
+```{r}
+
+cv.out = cv.glmnet(x[train,],y[train],alpha=1, family="binomial")
+
+par(mar=c(1,1,1,1))
+
+bestlam = cv.out$lambda.min
+
+print(paste("Best lambda = ", bestlam), sep="")
+
+```
+
+## Calculate the prediction accuracy, precision, and recall for the test data using Lasso
+
+```{r}
+lasso.pred=predict(lasso.mod,s=bestlam,newx=x[test,], family="binomial", type="class")
+acc.table <- table(lasso.pred,y.test)
+Accuracy <- round((acc.table[1,1] + acc.table[2,2])/sum(acc.table),4)
+Precision <- round(acc.table[2,2]/(acc.table[2,2]+acc.table[2,1]),4)
+Recall <- round(acc.table[2,2]/(acc.table[2,2]+acc.table[1,2]),4)
+print(paste("Accuracy = ", Accuracy), sep="")
+print(paste("Precision = ", Precision), sep="")
+print(paste("Recall = ", Recall), sep="")
+
+```
+
+## Predictor selection: get the important attributes from absolute values of coefficients of the attributes
+
+We can get the important attributes from absolute values of coefficients of the attributes. The table below print the attributes and their coffeicients arranged in descending order according to their importance. 
+
+```{r}
+out=glmnet(x,y,alpha=1,lambda=grid, family="binomial")
+
+lasso.coef = predict(out,type="coefficients",s=bestlam, family="binomial")
+
+index <- sapply(lasso.coef@i, function(x) x+1)
+
+coeffi_table <- data.frame("var" = lasso.coef@Dimnames[[1]][index],"coef" = lasso.coef@x) %>% filter(var != "(Intercept)") %>% arrange(desc(abs(coef)))
+
+coeffi_table
+```
+
